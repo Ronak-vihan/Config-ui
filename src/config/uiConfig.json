@@ -1,0 +1,21 @@
+{
+  "menu": "Role Module",
+  "metadata": {
+    "plant_code": "PJH",
+    "plant_name": "Panasonic Jhajjhar Haryana"
+  },
+  "fields": [
+    {
+      "name": "roleName",
+      "label": "Role Name",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "status",
+      "label": "Status",
+      "type": "text",
+      "required": true
+    }
+  ]
+}
