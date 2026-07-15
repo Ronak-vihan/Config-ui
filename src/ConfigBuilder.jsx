@@ -1,27 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
-  Tabs,
-  Tab,
   Paper,
-  TextField,
-  Checkbox,
-  FormControlLabel,
-  FormHelperText,
   Typography,
   Button,
   Stack,
   ThemeProvider,
   createTheme,
   CssBaseline,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DownloadIcon from "@mui/icons-material/Download";
 
-// ---- Dark theme so MUI text/labels/inputs show up properly ----
-// (MUI's default theme is LIGHT — dark text meant for a white
-// background. Since our panels are dark, we tell MUI to use its
-// "dark" palette instead, which flips text to light colors.)
+import { SECTIONS } from "./constants/sections";
+import AppTabs from "./components/AppTabs";
+import FormField from "./components/FormField";
+import QrSchemaEditor from "./components/QrSchemaEditor";
+import SubmenuEditor from "./components/SubmenuEditor";
+import StringListEditor from "./components/StringListEditor";
+import CreationModesEditor from "./components/CreationModesEditor";
+
 const darkTheme = createTheme({
   palette: {
     mode: "dark",
@@ -30,143 +30,156 @@ const darkTheme = createTheme({
   },
 });
 
-/**
- * ---------------------------------------------------------------
- * THE CORE IDEA (same as before, just re-stated)
- * ---------------------------------------------------------------
- * 1. schema = one array describing every field (label, path, type, section)
- * 2. FormField = one component that renders ANY field from that schema
- * 3. getByPath / setByPath = read/write the config object by dotted path
- * 4. The live JSON panel is just JSON.stringify(config) — it IS the state
- *
- * Only change in this version: the pieces are now MUI components
- * (TextField, Checkbox, Tabs, Paper, Button) instead of plain HTML.
- * The schema and logic underneath are untouched.
- * ---------------------------------------------------------------
- */
+// Presets available via "+ Add Submenu" — not part of the live config
+// until the user adds them.
+const PRESET_SUBMENUS = [
+  {
+    id: "quality-assurance",
+    name: "Quality Assurance",
+    enable: true,
+    actions: { selectedList: [], disabledList: [] },
+    column: [
+      {
+        column_name: "vendor_id",
+        label: "Vendor",
+        is_mandate: true,
+        unique_contraint: false,
+        enabled: true,
+        for_display: true,
+        for_input: true,
+      },
+    ],
+    paths: [],
+  },
+  {
+    id: "issuance",
+    name: "Issuance",
+    enable: true,
+    actions: { selectedList: [], disabledList: [] },
+    column: [
+      {
+        column_name: "plant_id",
+        label: "Plant",
+        is_mandate: true,
+        unique_contraint: false,
+        enabled: true,
+        for_display: true,
+        for_input: true,
+      },
+    ],
+    paths: [
+      "warehouse-management/dashboard/issuance-action:area:tab-Planned Issuance:storeArea:true",
+      "warehouse-management/dashboard/issuance-action:area:tab-Create/ Update Issuance:storeArea:false",
+      "warehouse-management/dashboard/issuance-action:area:tab-Fetch Issuance from SAP:storeArea:both",
+      "warehouse-management/dashboard/issuance-action:area:tab-Fetch Issuance from SAP:storeArea:noarea",
+    ],
+  },
+  {
+    id: "storage",
+    name: "Storage",
+    enable: true,
+    actions: { selectedList: [], disabledList: [] },
+    column: [
+      {
+        column_name: "plant_name",
+        label: "Plant Name",
+        is_mandate: false,
+        unique_contraint: false,
+        enabled: true,
+        for_display: false,
+        for_input: false,
+      },
+    ],
+    paths: [],
+  },
+];
 
-// ---- 1. Starting config ----
 const initialConfig = {
   menu: "Warehouse Dashboard",
+
   metadata: {
     plant_code: "PJH",
     plant_name: "Panasonic Jhajjhar Haryana",
   },
-  features: {
-    verifyGRNSync: true,
-    enableQRScan: false,
-    enableAutoRefresh: true,
-  },
+
   qr_schema: {
     rm: "plant_id;invoice_number;item_code;timestamp",
-    fg: "plant_id;invoice_number;item_code;timestamp",
-    ffg: "plant_id;invoice_number;item_code;timestamp",
+    sfg: "plant_id;production_no;item_code;timestamp",
+    fg: "plant_id;production_no;item_code;timestamp",
   },
-  apis: {
-    baseUrl: "https://api.example.com",
-    storeEndpoint: "/v1/stores",
-  },
+  rm_creation_mode: "manual",
+  sfg_creation_mode: "manual",
+  fg_creation_mode: "manual",
+  separator: ",",
+  separatorOptions: [",", ";", "no"],
+
+  allowedApis: [
+    "vendor",
+    "item",
+    "gateentry",
+    "generate_goods_receipt_note",
+    "productionorder",
+    "subcontract",
+    "issueMaterial",
+    "returnMaterial",
+    "rejectionstore",
+    "rejectionstore/accept",
+    "rejectionstore/scrap",
+    "fgproduced",
+    "fgmaterialconsumed",
+    "issueFG",
+    "fgdelivery",
+    "fgQCdetails",
+    "moveorder",
+    "postmoveorder",
+    "movematerialSFG",
+    "issueSFG",
+    "fginvoice",
+  ],
+
+  submenus: [
+    {
+      id: "inventory",
+      name: "Inventory",
+      enable: true,
+      actions: { selectedList: [], disabledList: [] },
+      column: [
+        {
+          column_name: "item_code",
+          label: "Item Code",
+          is_mandate: true,
+          unique_contraint: false,
+          enabled: true,
+          for_display: true,
+          for_input: true,
+        },
+      ],
+      paths: [],
+    },
+  ],
 };
 
-// ---- Reusable list of fields that can go into any QR string ----
-// Used by every "multiCheckbox" field in the QR Schema section.
-const QR_FIELD_OPTIONS = [
-  "plant_id",
-  "invoice_number",
-  "item_code",
-  "timestamp",
-];
-
-// ---- 2. Schema: only place you describe fields ----
 const schema = [
-  // --- Basics ---
   {
     section: "Basics",
     path: "menu",
     label: "Dashboard Menu Name",
-    help: "Top-level menu identity.",
+    placeholder: "e.g. Warehouse Dashboard",
   },
   {
     section: "Basics",
     path: "metadata.plant_code",
     label: "Plant Code",
-    help: "Short code, e.g. PJH.",
+    placeholder: "e.g. PJH",
   },
   {
     section: "Basics",
     path: "metadata.plant_name",
     label: "Plant Name",
-    help: "Full plant name.",
-  },
-
-  // --- Enabled Features (checkboxes) ---
-  {
-    section: "Enabled Features",
-    path: "features.verifyGRNSync",
-    label: "Verify GRN Sync",
-    help: "Validate GRN sync before saving.",
-    type: "checkbox",
-  },
-  {
-    section: "Enabled Features",
-    path: "features.enableQRScan",
-    label: "Enable QR Scan",
-    help: "Allow scanning QR codes.",
-    type: "checkbox",
-  },
-  {
-    section: "Enabled Features",
-    path: "features.enableAutoRefresh",
-    label: "Enable Auto Refresh",
-    help: "Auto refresh dashboard data.",
-    type: "checkbox",
-  },
-
-  // --- QR Schema ---
-  // type: "multiCheckbox" -> shows field.options as checkboxes, stores the
-  // selected ones as a single "a;b;c" string (separator can be overridden
-  // via field.separator, defaults to ";").
-  {
-    section: "QR Schema",
-    path: "qr_schema.rm",
-    label: "RM (Raw Material)",
-    help: "Fields included in the Raw Material QR code.",
-    type: "multiCheckbox",
-    options: QR_FIELD_OPTIONS,
-  },
-  {
-    section: "QR Schema",
-    path: "qr_schema.fg",
-    label: "FG (Finished Goods)",
-    help: "Fields included in the Finished Goods QR code.",
-    type: "multiCheckbox",
-    options: QR_FIELD_OPTIONS,
-  },
-  {
-    section: "QR Schema",
-    path: "qr_schema.ffg",
-    label: "FFG (Final Finished Goods)",
-    help: "Fields included in the Final Finished Goods QR code.",
-    type: "multiCheckbox",
-    options: QR_FIELD_OPTIONS,
-  },
-
-  // --- APIs & Stores ---
-  {
-    section: "APIs & Stores",
-    path: "apis.baseUrl",
-    label: "Base API URL",
-    help: "Root URL for all API calls.",
-  },
-  {
-    section: "APIs & Stores",
-    path: "apis.storeEndpoint",
-    label: "Store Endpoint",
-    help: "Path appended for store data.",
+    placeholder: "e.g. Panasonic Jhajjhar Haryana",
   },
 ];
 
-// ---- 3. Generic get/set by dotted path ----
 function getByPath(obj, path) {
   return path
     .split(".")
@@ -182,112 +195,94 @@ function setByPath(obj, path, value) {
   return next;
 }
 
-// ---- Helpers for "multiCheckbox" fields: string <-> array ----
-// Stored value is always a single string like "plant_id;item_code".
-function stringToList(str, separator = ";") {
-  if (!str) return [];
-  return str.split(separator).filter(Boolean);
-}
-
-function listToString(list, separator = ";") {
-  return list.join(separator);
-}
-
-// ---- 4. One generic field, now using MUI components ----
-function FormField({ field, value, onChange }) {
-  if (field.type === "checkbox") {
-    return (
-      <Box sx={{ mb: 2 }}>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={Boolean(value)}
-              onChange={(e) => onChange(field.path, e.target.checked)}
-            />
-          }
-          label={field.label}
-        />
-        {field.help && (
-          <FormHelperText sx={{ ml: 4, mt: -0.5 }}>{field.help}</FormHelperText>
-        )}
-      </Box>
-    );
-  }
-
-  if (field.type === "multiCheckbox") {
-    const separator = field.separator || ";";
-    const selected = stringToList(value, separator);
-
-    const toggleOption = (option) => {
-      const next = selected.includes(option)
-        ? selected.filter((o) => o !== option)
-        : [...selected, option];
-      onChange(field.path, listToString(next, separator));
-    };
-
-    return (
-      <Box sx={{ mb: 2.5 }}>
-        <Typography
-          sx={{ fontSize: 12.5, color: "#c9cdd6", fontWeight: 600, mb: 0.5 }}
-        >
-          {field.label}
-        </Typography>
-        <Stack direction="row" flexWrap="wrap">
-          {field.options.map((option) => (
-            <FormControlLabel
-              key={option}
-              sx={{ width: "48%", mr: 0 }}
-              control={
-                <Checkbox
-                  size="small"
-                  checked={selected.includes(option)}
-                  onChange={() => toggleOption(option)}
-                />
-              }
-              label={option}
-            />
-          ))}
-        </Stack>
-        {field.help && <FormHelperText>{field.help}</FormHelperText>}
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ mb: 2.5 }}>
-      <TextField
-        fullWidth
-        size="small"
-        label={field.label}
-        value={value ?? ""}
-        onChange={(e) => onChange(field.path, e.target.value)}
-        helperText={field.help}
-      />
-    </Box>
-  );
-}
-
 export default function ConfigBuilder() {
   const [config, setConfig] = useState(initialConfig);
   const [activeSection, setActiveSection] = useState("Basics");
   const [copied, setCopied] = useState(false);
 
+  const [jsonDraft, setJsonDraft] = useState(() =>
+    JSON.stringify(initialConfig, null, 2),
+  );
+  const [jsonError, setJsonError] = useState(null);
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+
   const handleChange = (path, value) => {
     setConfig((prev) => setByPath(prev, path, value));
   };
 
-  const sections = [...new Set(schema.map((f) => f.section))];
+  const updateSubmenu = (id, nextValue) => {
+    setConfig((prev) => ({
+      ...prev,
+      submenus: prev.submenus.map((sm) => (sm.id === id ? nextValue : sm)),
+    }));
+  };
+
+  const addSubmenu = (preset) => {
+    setConfig((prev) => {
+      if (prev.submenus.some((sm) => sm.id === preset.id)) return prev;
+      return { ...prev, submenus: [...prev.submenus, preset] };
+    });
+    setActiveSection(preset.id);
+  };
+
+  const removeSubmenu = (id) => {
+    setConfig((prev) => {
+      const currentIndex = prev.submenus.findIndex((sm) => sm.id === id);
+
+      const nextSubmenus = prev.submenus.filter((sm) => sm.id !== id);
+
+      if (activeSection === id) {
+        const previousSubmenu = nextSubmenus[currentIndex - 1];
+
+        setActiveSection(previousSubmenu?.id || "Basics");
+      }
+
+      return {
+        ...prev,
+        submenus: nextSubmenus,
+      };
+    });
+  };
+
+  const availableToAdd = PRESET_SUBMENUS.filter(
+    (preset) => !config.submenus.some((sm) => sm.id === preset.id),
+  );
+
+  const sections = SECTIONS;
   const fieldsForSection = schema.filter((f) => f.section === activeSection);
   const jsonString = JSON.stringify(config, null, 2);
+
+  useEffect(() => {
+    const latest = JSON.stringify(config, null, 2);
+    if (latest !== jsonDraft) setJsonDraft(latest);
+  }, [config]);
+
+  const handleJsonDraftChange = (e) => {
+    const text = e.target.value;
+    setJsonDraft(text);
+    try {
+      const parsed = JSON.parse(text);
+      if (
+        parsed === null ||
+        Array.isArray(parsed) ||
+        typeof parsed !== "object"
+      )
+        throw new Error();
+      setConfig(parsed);
+      setJsonError(null);
+    } catch {
+      setJsonError("Invalid JSON — fix the syntax to apply changes.");
+    }
+  };
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(jsonString);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard can fail in sandboxed iframes; ignore
-    }
+    } catch {}
   };
 
   const handleDownload = () => {
@@ -300,25 +295,93 @@ export default function ConfigBuilder() {
     URL.revokeObjectURL(url);
   };
 
+  const renderMiddle = () => {
+    if (activeSection === "QR Schema") {
+      return (
+        <QrSchemaEditor
+          qrSchema={config.qr_schema}
+          onChange={(next) => handleChange("qr_schema", next)}
+        />
+      );
+    }
+    if (activeSection === "Creation Modes") {
+      return (
+        <CreationModesEditor
+          values={{
+            rm_creation_mode: config.rm_creation_mode,
+            sfg_creation_mode: config.sfg_creation_mode,
+            fg_creation_mode: config.fg_creation_mode,
+            separator: config.separator,
+          }}
+          onChange={(field, value) => handleChange(field, value)}
+        />
+      );
+    }
+    if (activeSection === "Allowed APIs") {
+      return (
+        <StringListEditor
+          items={config.allowedApis || []}
+          onChange={(next) => handleChange("allowedApis", next)}
+          placeholder="e.g. vendor, item, gateentry"
+          gridLayout
+        />
+      );
+    }
+
+    const activeSubmenu = config.submenus.find((sm) => sm.id === activeSection);
+    if (activeSubmenu) {
+      return (
+        <SubmenuEditor
+          value={activeSubmenu}
+          onChange={(next) => updateSubmenu(activeSubmenu.id, next)}
+        />
+      );
+    }
+
+    return fieldsForSection.map((field) => (
+      <FormField
+        key={field.path}
+        field={field}
+        value={getByPath(config, field.path)}
+        onChange={handleChange}
+      />
+    ));
+  };
+
+  const activeLabel = (() => {
+    const activeSubmenu = config.submenus.find((sm) => sm.id === activeSection);
+    return activeSubmenu ? activeSubmenu.name : activeSection;
+  })();
+
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Box sx={{ bgcolor: "#0f1115", minHeight: "100%", p: 3 }}>
+      <Box
+        sx={{ bgcolor: "#0f1115", minHeight: "100%", p: { xs: 1.5, sm: 3 } }}
+      >
         <Paper
           elevation={0}
           sx={{
             maxWidth: 1100,
             mx: "auto",
+            height: "85vh",
             display: "grid",
-            gridTemplateColumns: "180px 1fr 1fr",
+            gridTemplateColumns: { xs: "1fr", md: "180px 1fr 1fr" },
+            gridTemplateRows: { xs: "auto 1fr 1fr", md: "1fr" },
             bgcolor: "#15181e",
             border: "1px solid #262b35",
             borderRadius: 3,
             overflow: "hidden",
           }}
         >
-          {/* ---- left nav: MUI Tabs, vertical ---- */}
-          <Box sx={{ bgcolor: "#12141a", borderRight: "1px solid #262b35" }}>
+          <Box
+            sx={{
+              bgcolor: "#12141a",
+              borderRight: { xs: "none", md: "1px solid #262b35" },
+              borderBottom: { xs: "1px solid #262b35", md: "none" },
+              overflow: "hidden",
+            }}
+          >
             <Typography
               sx={{
                 fontSize: 11,
@@ -332,57 +395,59 @@ export default function ConfigBuilder() {
             >
               CONFIG BUILDER
             </Typography>
-            <Tabs
-              orientation="vertical"
-              value={activeSection}
-              onChange={(e, val) => setActiveSection(val)}
-              TabIndicatorProps={{
-                style: { left: 0, backgroundColor: "#e8963f", width: 3 },
-              }}
-              sx={{
-                "& .MuiTab-root": {
-                  alignItems: "flex-start",
-                  textTransform: "none",
-                  color: "#aeb4c0",
-                  fontSize: 13.5,
-                  minHeight: 40,
-                },
-                "& .Mui-selected": {
-                  color: "#fff !important",
-                  fontWeight: 600,
-                },
-              }}
-            >
-              {sections.map((s) => (
-                <Tab key={s} value={s} label={s} />
-              ))}
-            </Tabs>
+            <AppTabs
+              sections={sections}
+              activeSection={activeSection}
+              onChange={setActiveSection}
+              isMobile={isMobile}
+              submenus={config.submenus}
+              onSelectSubmenu={setActiveSection}
+              availableToAdd={availableToAdd}
+              onAddSubmenu={addSubmenu}
+              onRemoveSubmenu={removeSubmenu}
+            />
           </Box>
 
-          {/* ---- middle: generated form ---- */}
-          <Box sx={{ p: 3, borderRight: "1px solid #262b35" }}>
+          <Box
+            sx={{
+              p: { xs: 2, sm: 3 },
+              borderRight: { xs: "none", md: "1px solid #262b35" },
+              borderBottom: { xs: "1px solid #262b35", md: "none" },
+              minWidth: 0,
+              height: "100%",
+              overflowY: "auto",
+            }}
+          >
             <Typography
               sx={{ fontSize: 15, fontWeight: 700, mb: 2, color: "#fff" }}
             >
-              {activeSection}
+              {activeLabel}
             </Typography>
-            {fieldsForSection.map((field) => (
-              <FormField
-                key={field.path}
-                field={field}
-                value={getByPath(config, field.path)}
-                onChange={handleChange}
-              />
-            ))}
+            {renderMiddle()}
           </Box>
 
-          {/* ---- right: live JSON ---- */}
-          <Box sx={{ p: 3, bgcolor: "#0d0f13" }}>
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              alignItems="center"
-              sx={{ mb: 1.5 }}
+          <Box
+            sx={{
+              p: { xs: 2, sm: 3 },
+              bgcolor: "#0d0f13",
+              minWidth: 0,
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 1.5,
+                rowGap: 1,
+                columnGap: 3,
+                flexShrink: 0,
+              }}
             >
               <Typography
                 sx={{
@@ -394,6 +459,7 @@ export default function ConfigBuilder() {
               >
                 LIVE JSON OUTPUT
               </Typography>
+
               <Stack direction="row" spacing={1}>
                 <Button
                   size="small"
@@ -413,23 +479,43 @@ export default function ConfigBuilder() {
                   Download
                 </Button>
               </Stack>
-            </Stack>
+            </Box>
+
+            {jsonError && (
+              <Typography
+                sx={{ fontSize: 11, color: "#e08585", mb: 1, flexShrink: 0 }}
+              >
+                {jsonError}
+              </Typography>
+            )}
+
             <Box
-              component="pre"
+              component="textarea"
+              spellCheck={false}
+              value={jsonDraft}
+              onChange={handleJsonDraftChange}
               sx={{
+                flex: 1,
+                width: "100%",
+                minHeight: 0,
                 m: 0,
+                p: 0,
+                border: "none",
+                outline: "none",
+                resize: "none",
+                bgcolor: "transparent",
                 fontFamily: "'JetBrains Mono', Menlo, monospace",
                 fontSize: 12.5,
                 lineHeight: 1.6,
                 color: "#9de3a5",
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
-                maxHeight: 420,
+                overflowWrap: "anywhere",
                 overflowY: "auto",
+                overflowX: "hidden",
+                boxSizing: "border-box",
               }}
-            >
-              {jsonString}
-            </Box>
+            />
           </Box>
         </Paper>
       </Box>
