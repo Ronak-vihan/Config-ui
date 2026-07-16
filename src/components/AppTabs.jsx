@@ -10,15 +10,13 @@ import {
   ListItemButton,
   ListItemText,
   Button,
-  Menu,
-  MenuItem,
   IconButton,
+  TextField,
 } from "@mui/material";
-
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
-
+import { SUBMENU_TEXT } from "../constants/submenuConstants";
 export default function AppTabs({
   sections,
   activeSection,
@@ -26,25 +24,44 @@ export default function AppTabs({
   isMobile,
   submenus = [],
   onSelectSubmenu,
-  availableToAdd = [],
   onAddSubmenu,
   onRemoveSubmenu,
 }) {
   const [submenuExpanded, setSubmenuExpanded] = useState(false);
-  const [anchorEl, setAnchorEl] = useState(null);
+  const [isAddingSubmenu, setIsAddingSubmenu] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftError, setDraftError] = useState("");
 
   const hasSubmenuSection = sections.includes("Submenu");
   const flatSections = sections.filter((s) => s !== "Submenu");
 
-  const openAddMenu = (e) => {
-    e.stopPropagation();
-    setAnchorEl(e.currentTarget);
+  const startAdding = () => {
+    setIsAddingSubmenu(true);
+    setDraftName("");
+    setDraftError("");
   };
-  const closeAddMenu = () => setAnchorEl(null);
 
-  const handleAdd = (preset) => {
-    onAddSubmenu(preset);
-    closeAddMenu();
+  const cancelAdding = () => {
+    setIsAddingSubmenu(false);
+    setDraftName("");
+    setDraftError("");
+  };
+
+  const commitAdding = () => {
+    const trimmed = draftName.trim();
+    if (!trimmed) {
+      cancelAdding();
+      return;
+    }
+    const duplicate = submenus.some(
+      (sm) => (sm.name || "").trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (duplicate) {
+      setDraftError(SUBMENU_TEXT.duplicateError);
+      return;
+    }
+    onAddSubmenu(trimmed);
+    cancelAdding();
   };
 
   return (
@@ -120,25 +137,25 @@ export default function AppTabs({
 
           <AccordionDetails sx={{ p: 0 }}>
             <List disablePadding>
-              {submenus.map((sm) => (
+              {submenus.map((sm, index) => (
                 <ListItemButton
-                  key={sm.id}
-                  selected={activeSection === sm.id}
-                  onClick={() => onSelectSubmenu(sm.id)}
+                  key={index}
+                  selected={activeSection === index}
+                  onClick={() => onSelectSubmenu(index)}
                   sx={{
                     pl: 2,
                     py: 0,
                     minHeight: 28,
-                    color: activeSection === sm.id ? "#fff" : "#aeb4c0",
+                    color: activeSection === index ? "#fff" : "#aeb4c0",
                     fontWeight: 400,
                     borderLeft:
-                      activeSection === sm.id
+                      activeSection === index
                         ? "2px solid #e8963f"
                         : "3px solid transparent",
                   }}
                 >
                   <ListItemText
-                    primary={sm.name}
+                    primary={sm.name || SUBMENU_TEXT.defaultName}
                     sx={{
                       "& .MuiTypography-root": {
                         fontSize: "10px",
@@ -151,10 +168,11 @@ export default function AppTabs({
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onRemoveSubmenu(sm.id);
+                        onRemoveSubmenu(index);
                       }}
                       sx={{
-                        p: 0.2,
+                        p: 0,
+                        ml: 1.5,
                         color: "#e08585",
                       }}
                     >
@@ -168,48 +186,104 @@ export default function AppTabs({
                 sx={{
                   display: "flex",
                   justifyContent: "flex-start",
-                  pl: 2,
+                  px: 2,
                   py: 1,
                 }}
               >
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<AddIcon sx={{ fontSize: 12 }} />}
-                  onClick={openAddMenu}
-                  disabled={availableToAdd.length === 0}
-                  sx={{
-                    fontSize: 5,
-                    py: 0,
-                    px: 0,
-                    borderWidth: "0.8px",
+                {isAddingSubmenu ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      width: "100%",
+                    }}
+                  >
+                    <TextField
+                      autoFocus
+                      size="small"
+                      variant="outlined"
+                      placeholder={SUBMENU_TEXT.namePlaceholder}
+                      value={draftName}
+                      error={Boolean(draftError)}
+                      helperText={draftError}
+                      onChange={(e) => {
+                        setDraftName(e.target.value);
+                        if (draftError) setDraftError("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitAdding();
+                        } else if (e.key === "Escape") {
+                          cancelAdding();
+                        }
+                      }}
+                      fullWidth
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
 
-                    "&:hover": {
-                      borderWidth: "0.8px",
-                    },
+                        "& .MuiOutlinedInput-root": {
+                          height: 28,
+                        },
 
-                    "& .MuiButton-startIcon": {
-                      marginRight: "1px",
-                    },
+                        "& .MuiInputBase-input": {
+                          fontSize: "10px",
+                          px: 1,
+                          py: 0,
+                        },
 
-                    "& .MuiSvgIcon-root": {
+                        "& .MuiInputBase-input::placeholder": {
+                          fontSize: "10px",
+                          opacity: 0.7,
+                        },
+
+                        "& .MuiFormHelperText-root": {
+                          fontSize: 9,
+                          m: 0,
+                        },
+                      }}
+                    />
+                    <IconButton
+                      size="small"
+                      onClick={cancelAdding}
+                      sx={{
+                        p: 0.3,
+                        ml: 1,
+                        flexShrink: 0,
+                        color: "#e08585",
+                        transform: "translateX(3px)",
+                      }}
+                    >
+                      <CloseIcon sx={{ fontSize: 12 }} />
+                    </IconButton>
+                  </Box>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AddIcon sx={{ fontSize: 12 }} />}
+                    onClick={startAdding}
+                    sx={{
+                      width: 120,
+                      height: 28,
                       fontSize: "10px",
-                    },
-                  }}
-                >
-                  Add Submenu
-                </Button>
-                <Menu
-                  anchorEl={anchorEl}
-                  open={Boolean(anchorEl)}
-                  onClose={closeAddMenu}
-                >
-                  {availableToAdd.map((preset) => (
-                    <MenuItem key={preset.id} onClick={() => handleAdd(preset)}>
-                      {preset.name}
-                    </MenuItem>
-                  ))}
-                </Menu>
+                      justifyContent: "flex-start",
+                      px: 1,
+                      borderWidth: "0.8px",
+
+                      "&:hover": {
+                        borderWidth: "0.8px",
+                      },
+
+                      "& .MuiButton-startIcon": {
+                        marginRight: "6px",
+                      },
+                    }}
+                  >
+                    {SUBMENU_TEXT.addButtonLabel}
+                  </Button>
+                )}
               </Box>
             </List>
           </AccordionDetails>

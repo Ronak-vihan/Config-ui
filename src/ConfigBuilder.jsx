@@ -30,69 +30,12 @@ const darkTheme = createTheme({
   },
 });
 
-// Presets available via "+ Add Submenu" — not part of the live config
-// until the user adds them.
-const PRESET_SUBMENUS = [
-  {
-    id: "quality-assurance",
-    name: "Quality Assurance",
-    enable: true,
-    actions: { selectedList: [], disabledList: [] },
-    column: [
-      {
-        column_name: "vendor_id",
-        label: "Vendor",
-        is_mandate: true,
-        unique_contraint: false,
-        enabled: true,
-        for_display: true,
-        for_input: true,
-      },
-    ],
-    paths: [],
-  },
-  {
-    id: "issuance",
-    name: "Issuance",
-    enable: true,
-    actions: { selectedList: [], disabledList: [] },
-    column: [
-      {
-        column_name: "plant_id",
-        label: "Plant",
-        is_mandate: true,
-        unique_contraint: false,
-        enabled: true,
-        for_display: true,
-        for_input: true,
-      },
-    ],
-    paths: [
-      "warehouse-management/dashboard/issuance-action:area:tab-Planned Issuance:storeArea:true",
-      "warehouse-management/dashboard/issuance-action:area:tab-Create/ Update Issuance:storeArea:false",
-      "warehouse-management/dashboard/issuance-action:area:tab-Fetch Issuance from SAP:storeArea:both",
-      "warehouse-management/dashboard/issuance-action:area:tab-Fetch Issuance from SAP:storeArea:noarea",
-    ],
-  },
-  {
-    id: "storage",
-    name: "Storage",
-    enable: true,
-    actions: { selectedList: [], disabledList: [] },
-    column: [
-      {
-        column_name: "plant_name",
-        label: "Plant Name",
-        is_mandate: false,
-        unique_contraint: false,
-        enabled: true,
-        for_display: false,
-        for_input: false,
-      },
-    ],
-    paths: [],
-  },
-];
+const slugify = (str) =>
+  str
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 
 const initialConfig = {
   menu: "Warehouse Dashboard",
@@ -199,6 +142,7 @@ export default function ConfigBuilder() {
   const [config, setConfig] = useState(initialConfig);
   const [activeSection, setActiveSection] = useState("Basics");
   const [copied, setCopied] = useState(false);
+  const [submenuErrors, setSubmenuErrors] = useState({});
 
   const [jsonDraft, setJsonDraft] = useState(() =>
     JSON.stringify(initialConfig, null, 2),
@@ -212,44 +156,98 @@ export default function ConfigBuilder() {
     setConfig((prev) => setByPath(prev, path, value));
   };
 
-  const updateSubmenu = (id, nextValue) => {
-    setConfig((prev) => ({
-      ...prev,
-      submenus: prev.submenus.map((sm) => (sm.id === id ? nextValue : sm)),
-    }));
-  };
-
-  const addSubmenu = (preset) => {
+  const updateSubmenu = (index, nextValue) => {
     setConfig((prev) => {
-      if (prev.submenus.some((sm) => sm.id === preset.id)) return prev;
-      return { ...prev, submenus: [...prev.submenus, preset] };
-    });
-    setActiveSection(preset.id);
-  };
+      const current = prev.submenus[index];
+      const updated = { ...nextValue };
 
-  const removeSubmenu = (id) => {
-    setConfig((prev) => {
-      const currentIndex = prev.submenus.findIndex((sm) => sm.id === id);
+      if (nextValue.name !== current.name) {
+        const trimmed = (nextValue.name || "").trim();
 
-      const nextSubmenus = prev.submenus.filter((sm) => sm.id !== id);
+        if (trimmed === "") {
+          setSubmenuErrors((errs) => ({
+            ...errs,
+            [index]: "Submenu name cannot be empty",
+          }));
+          updated.id = "";
+        } else {
+          const slug = slugify(trimmed);
+          const duplicate = prev.submenus.some(
+            (sm, i) => i !== index && sm.id === slug,
+          );
 
-      if (activeSection === id) {
-        const previousSubmenu = nextSubmenus[currentIndex - 1];
-
-        setActiveSection(previousSubmenu?.id || "Basics");
+          if (duplicate) {
+            setSubmenuErrors((errs) => ({
+              ...errs,
+              [index]: "Submenu name already exists",
+            }));
+            updated.id = "";
+          } else {
+            setSubmenuErrors((errs) => ({ ...errs, [index]: "" }));
+            updated.id = slug;
+          }
+        }
       }
 
       return {
         ...prev,
-        submenus: nextSubmenus,
+        submenus: prev.submenus.map((sm, i) => (i === index ? updated : sm)),
       };
     });
   };
 
-  const availableToAdd = PRESET_SUBMENUS.filter(
-    (preset) => !config.submenus.some((sm) => sm.id === preset.id),
-  );
+  const addSubmenu = (name) => {
+    const trimmed = name.trim();
+    const newSubmenu = {
+      id: slugify(trimmed),
+      name: trimmed,
+      enable: true,
+      actions: { selectedList: [], disabledList: [] },
+      column: [
+        {
+          column_name: "column_1",
+          label: "",
+          is_mandate: false,
+          unique_contraint: false,
+          enabled: true,
+          for_display: true,
+          for_input: true,
+        },
+      ],
+      paths: [],
+    };
+    setConfig((prev) => ({
+      ...prev,
+      submenus: [...prev.submenus, newSubmenu],
+    }));
+    setActiveSection(config.submenus.length);
+  };
 
+  const removeSubmenu = (index) => {
+    setConfig((prev) => {
+      const nextSubmenus = prev.submenus.filter((_, i) => i !== index);
+
+      if (activeSection === index) {
+        if (nextSubmenus.length === 0) {
+          setActiveSection("Basics");
+        } else if (index - 1 >= 0) {
+          setActiveSection(index - 1);
+        } else {
+          setActiveSection(0);
+        }
+      } else if (typeof activeSection === "number" && activeSection > index) {
+        setActiveSection(activeSection - 1);
+      }
+
+      return { ...prev, submenus: nextSubmenus };
+    });
+
+    setSubmenuErrors((prev) => {
+      const updated = { ...prev };
+      delete updated[index];
+      return updated;
+    });
+  };
   const sections = SECTIONS;
   const fieldsForSection = schema.filter((f) => f.section === activeSection);
   const jsonString = JSON.stringify(config, null, 2);
@@ -295,6 +293,11 @@ export default function ConfigBuilder() {
     URL.revokeObjectURL(url);
   };
 
+  const activeSubmenu =
+    typeof activeSection === "number"
+      ? config.submenus[activeSection]
+      : undefined;
+
   const renderMiddle = () => {
     if (activeSection === "QR Schema") {
       return (
@@ -328,12 +331,12 @@ export default function ConfigBuilder() {
       );
     }
 
-    const activeSubmenu = config.submenus.find((sm) => sm.id === activeSection);
     if (activeSubmenu) {
       return (
         <SubmenuEditor
           value={activeSubmenu}
-          onChange={(next) => updateSubmenu(activeSubmenu.id, next)}
+          onChange={(next) => updateSubmenu(activeSection, next)}
+          nameError={submenuErrors[activeSection]}
         />
       );
     }
@@ -348,10 +351,9 @@ export default function ConfigBuilder() {
     ));
   };
 
-  const activeLabel = (() => {
-    const activeSubmenu = config.submenus.find((sm) => sm.id === activeSection);
-    return activeSubmenu ? activeSubmenu.name : activeSection;
-  })();
+  const activeLabel = activeSubmenu
+    ? activeSubmenu.name || "New Submenu"
+    : activeSection;
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -402,7 +404,6 @@ export default function ConfigBuilder() {
               isMobile={isMobile}
               submenus={config.submenus}
               onSelectSubmenu={setActiveSection}
-              availableToAdd={availableToAdd}
               onAddSubmenu={addSubmenu}
               onRemoveSubmenu={removeSubmenu}
             />

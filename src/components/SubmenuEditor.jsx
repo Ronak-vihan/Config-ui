@@ -22,7 +22,7 @@ const checkboxLabelSx = {
 };
 const checkboxInputSx = { p: 0.4, "& .MuiSvgIcon-root": { fontSize: 11 } };
 
-export default function SubmenuEditor({ value, onChange }) {
+export default function SubmenuEditor({ value, onChange, nameError }) {
   const [columnErrors, setColumnErrors] = useState({});
 
   const columns = value.column || [];
@@ -100,9 +100,11 @@ export default function SubmenuEditor({ value, onChange }) {
 
       <Box sx={{ mb: 2.5 }}>
         <CustomTextField
-          label="Menu Name"
+          label=" Enter Submenu Name"
           value={value.name ?? ""}
-          placeholder="e.g. Inventory"
+          placeholder="Enter submenu name"
+          error={Boolean(nameError)}
+          helperText={nameError}
           onChange={(e) => update({ name: e.target.value })}
         />
       </Box>
